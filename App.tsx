@@ -16,20 +16,21 @@ const INITIAL_ASSISTANTS: Assistant[] = [
     name: 'Nano Banana', 
     icon: '🍌', 
     model: 'gemini-2.5-flash-image',
-    systemInstruction: 'You are an advanced AI image generator. You are strictly forbidden from generating text responses, JSON, code, or descriptions. You must ONLY generate images based on the user\'s prompt. If the user provides an input image, edit it according to their instructions. If no image is provided, generate a new one.'
+    systemInstruction: 'You are an expert AI image generator. Your task is to generate images based on the user\'s prompt. You must NOT return JSON, code, or text descriptions of the image. You must ONLY return the generated image itself. If the user provides an image, use it as a reference for editing.'
   },
   { 
     id: 'nano-banana-pro', 
     name: 'Nano Banana Pro', 
     icon: '🍌⁺', 
     model: 'gemini-3-pro-image-preview',
-    systemInstruction: 'You are a high-fidelity AI image generator. You are strictly forbidden from generating text responses, JSON, code, or descriptions. You must ONLY generate high-quality images based on the user\'s prompt. If the user provides an input image, edit it according to their instructions. If no image is provided, generate a new one.'
+    systemInstruction: 'You are a high-fidelity AI image generator. Your task is to generate high-quality, photorealistic or stylized images. You must NOT return JSON, code, or text descriptions. You must ONLY return the generated image. If the user provides an image, use it as a reference.'
   },
   { 
-    id: 'text-pro', 
-    name: 'Gemini 2.5 Pro Preview', 
+    id: 'gemini-3-pro', 
+    name: 'Gemini 3.0 Pro', 
     icon: '🧠', 
-    model: 'gemini-3-pro-preview' 
+    model: 'gemini-3-pro-preview',
+    systemInstruction: 'You are a helpful and intelligent AI assistant capable of complex reasoning and text processing. Answer the user\'s questions comprehensively.'
   },
 ];
 
@@ -192,11 +193,25 @@ const App: React.FC = () => {
       let errorMessage = "无法生成响应。";
       let isPermissionError = false;
 
+      // Ensure we treat the error as a string for inclusion checking, or check properties
+      const errString = error.toString();
+      const errStatus = error.status || error.code;
+      const errDetails = error.message || '';
+
       // Handle 403 Forbidden specifically
-      if (error.message?.includes('403') || error.status === 403) {
-        errorMessage = "权限不足 (403)。请在设置中检查您的 API 密钥。此模型可能需要特定的访问权限或付费计划。";
+      if (errString.includes('403') || errStatus === 403) {
+        errorMessage = `❌ 权限不足 (403)。\n\n您当前的 API 密钥无法访问模型 "${activeAssistant.name}"。\n\n• 请尝试切换回 Nano Banana (基础版)。\n• 或者在设置中输入具有 Billing/付费权限的 API Key。`;
         isPermissionError = true;
-      } else if (error.message) {
+      } 
+      // Handle 429 Resource Exhausted (Quota)
+      else if (errString.includes('429') || errStatus === 429 || errDetails.includes('Quota exceeded')) {
+         errorMessage = `⚠️ 配额已用尽 (429)。\n\n您当前的 API 使用量已达到 Google 免费层级的限制。\n\n• 请稍等片刻再试（通常每分钟重置）。\n• 或者在设置中输入付费项目的 API Key 以获得更高配额。`;
+      }
+      // Handle 503 Service Unavailable / Overloaded
+      else if (errString.includes('503') || errStatus === 503) {
+        errorMessage = `⚠️ 服务过载 (503)。\n\nGemini 服务当前繁忙。请稍后再试。`;
+      }
+      else if (error.message) {
         errorMessage = `Error: ${error.message}`;
       }
 
@@ -209,7 +224,8 @@ const App: React.FC = () => {
       updateActiveSessionMessages([...messagesWithUser, errorMsg]);
       
       if (isPermissionError) {
-        setIsSettingsOpen(true);
+        // Small delay to let the user see the message appears first
+        setTimeout(() => setIsSettingsOpen(true), 1500);
       }
 
     } finally {
